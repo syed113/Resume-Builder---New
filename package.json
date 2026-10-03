@@ -1,0 +1,29 @@
+{
+  "name": "codespaces-blank",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n web,api \"vite --host 0.0.0.0\" \"node server.js\"",
+    "build": "vite build",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "dotenv": "^18.0.5",
+    "express": "^5.2.1",
+    "lucide-react": "^1.51.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "oxlint": "^1.81.0",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.3.0"
+  }
+}
