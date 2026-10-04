@@ -43,3 +43,124 @@ The goal is simple: help job seekers create more targeted, ATS-friendly applicat
 ---
 
 ## 🏗️ Architecture
+User Browser (React + Vite)
+│
+▼
+POST /api/optimize (Vercel Serverless Function)
+│
+▼
+Google Gemini API (server-side, API key protected)
+
+text
+
+- **Frontend:** React + Vite — fast, modern SPA with hot module replacement
+- **Backend:** Vercel Serverless Function (`/api/optimize`) — handles Gemini API calls securely
+- **AI:** Google Gemini — semantic analysis and resume rewriting
+- **Deployment:** Vercel — frontend + serverless function deployed together
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) (v18 or later)
+- A [Google AI Studio](https://aistudio.google.com/) account to generate a Gemini API key
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/syed113/Resume-Builder---New.git
+cd Resume-Builder---New
+2. Install dependencies
+bash
+npm install
+3. Configure environment variables
+Copy the example file and add your Gemini API key:
+
+bash
+cp .env.example .env.local
+Edit .env.local:
+
+text
+GEMINI_API_KEY=your_api_key_here
+GEMINI_MODEL=gemini-2.0-flash   # optional, defaults to gemini-3-flash-preview
+⚠️ Important: .env.local is git-ignored. Never commit your API key.
+
+4. Run the development server
+bash
+npm run dev
+Open the Vite URL printed in your terminal (usually http://localhost:5173).
+
+🌍 Deploying to Vercel
+Push your repo to GitHub
+
+Import the project in Vercel
+
+In Settings → Environment Variables, add:
+
+GEMINI_API_KEY — your Google AI Studio key
+
+GEMINI_MODEL (optional) — e.g., gemini-2.0-flash
+
+Redeploy
+
+Note: Do not use a VITE_ prefix for the API key — Vite-prefixed variables are exposed to the browser.
+
+Troubleshooting
+Symptom	Likely Cause	Fix
+/api/optimize returns a non-JSON page	API function not included in deployment	Check Vercel deployment logs; ensure api/optimize.js exists
+JSON configuration error	GEMINI_API_KEY not set for that environment	Add the variable in Vercel Settings and redeploy
+🛠️ Tech Stack
+Layer	Technology
+Frontend Framework	React 18
+Build Tool	Vite
+AI / LLM	Google Gemini API
+Serverless Backend	Vercel Functions
+Deployment	Vercel
+Language	JavaScript (ES Modules)
+📁 Project Structure
+text
+
+├── api/
+│   └── optimize.js          # Vercel serverless function (Gemini integration)
+├── public/                  # Static assets
+├── src/                     # React source code
+│   ├── components/          # UI components
+│   ├── pages/               # Page views
+│   └── main.jsx             # App entry point
+├── .env.example             # Environment variable template
+├── package.json
+└── README.md
+
+🗺️ Roadmap
+□ Support for multiple resume formats (PDF, DOCX upload)
+□ Side-by-side diff view of original vs. tailored resume
+□ Export tailored resume as PDF
+□ Cover letter generation
+□ User accounts to save and revisit past tailors
+
+🤝 Contributing
+Contributions are welcome! If you have ideas for improvements or find a bug:
+Fork the repository
+Create a feature branch (git checkout -b feature/amazing-feature)
+Commit your changes (git commit -m 'Add amazing feature')
+Push to the branch (git push origin feature/amazing-feature)
+Open a Pull Request
+
+📄 License
+This project is licensed under the MIT License.
+
+🙏 Acknowledgements
+Google Gemini API for the AI backbone
+
+Vercel for seamless deployment
+
+Vite for the blazing-fast build tooling
+
+<div align="center">
+Built with ❤️ to help job seekers land their next role.
+
+⭐ If this project helped you, consider giving it a star!
+
+</div> ```
