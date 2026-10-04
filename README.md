@@ -1,26 +1,45 @@
-# AI Resume Tailor
+<!-- Centered header -->
+<div align="center">
 
-A React app that tailors a resume to a job description with Gemini and returns an editable resume, keyword gap analysis, and ATS estimate.
+# 🎯 AI Resume Tailor
 
-## Run locally
+**Tailor your resume to any job description in seconds using Google Gemini AI.**
 
-1. Create a Gemini API key in Google AI Studio.
-2. Copy `.env.example` to `.env.local` and set `GEMINI_API_KEY` to your key. `.env.local` is ignored by Git.
-3. Run `npm run dev` and open the Vite URL printed in the terminal.
+[![Live Demo](https://img.shields.io/badge/🌐_Live_Demo-Visit_App-blue?style=for-the-badge)](https://resumeanalyzer-fawn.vercel.app/)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github)](https://github.com/syed113/Resume-Builder---New)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](./LICENSE)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=for-the-badge&logo=vite)](https://vitejs.dev/)
+[![Gemini](https://img.shields.io/badge/Google_Gemini-AI-4285F4?style=for-the-badge&logo=google)](https://ai.google.dev/)
 
-The app sends resume text and the job description to a server-side API endpoint, which makes the Gemini request. The API key is only read by the server and is not included in browser code. Usage may incur charges under your Google account.
+</div>
 
-Set `GEMINI_MODEL` in `.env.local` to use a different Gemini model. Restart the dev server after changing environment variables.
+---
 
-## Build
+## 📖 Overview
 
-Run `npm run build` to create the frontend production bundle. Vercel deploys the server-side `/api/optimize` function from `api/optimize.js` alongside the frontend.
+**AI Resume Tailor** is a web application that takes your existing resume and a target job description, then uses Google's Gemini AI to:
 
-For Vercel:
+- **Rewrite your experience** to semantically align with the role
+- **Identify keyword gaps** between your resume and the job posting
+- **Estimate ATS compatibility** so you know how well you'll pass automated screening
 
-1. In the Vercel project, open **Settings → Environment Variables**.
-2. Add `GEMINI_API_KEY` with your Google AI Studio API key. Select the environments you deploy (for example, Production and Preview).
-3. Optionally add `GEMINI_MODEL` if you want to use a model other than `gemini-3-flash-preview`.
-4. Redeploy so the function receives the environment variables.
+The goal is simple: help job seekers create more targeted, ATS-friendly applications without spending hours manually editing.
 
-Do not use a `VITE_` prefix or put the key in frontend code; Vite-prefixed variables are exposed to the browser. If `/api/optimize` returns a non-JSON page, check the Vercel deployment logs and confirm the API function was included in the deployment. If it returns a JSON configuration error, confirm `GEMINI_API_KEY` is set for that deployment environment and redeploy.
+> **Why I built this:** After watching friends and colleagues struggle with ATS rejections despite being qualified, I wanted to see if AI could bridge the gap between human experience and machine-readable applications.
+
+---
+
+## ✨ Features
+
+| Feature | Description |
+|---------|-------------|
+| **AI-Powered Tailoring** | Rewrites bullet points and summaries to match the target role's language |
+| **Keyword Gap Analysis** | Shows which keywords from the job description are missing from your resume |
+| **ATS Score Estimate** | Gives a compatibility percentage based on formatting and keyword density |
+| **Editable Output** | The generated resume is fully editable before you export |
+| **Privacy-First** | Your resume and job description are processed server-side; API key never exposed to browser |
+
+---
+
+## 🏗️ Architecture
