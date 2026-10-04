@@ -1,41 +1,48 @@
 const responseSchema = {
-  type: 'OBJECT',
+  type: 'object',
   properties: {
-    contactInfo: { type: 'STRING', description: 'Candidate name and contact info (email, phone, links) separated by |' },
-    summary: { type: 'STRING', description: 'A tailored 3-4 sentence professional summary for the job.' },
-    skills: { type: 'ARRAY', items: { type: 'STRING' } },
+    contactInfo: { type: 'string', description: 'Candidate name and contact info (email, phone, links) separated by |' },
+    summary: { type: 'string', description: 'A tailored 3-4 sentence professional summary for the job.' },
+    skills: { type: 'array', items: { type: 'string' } },
     experience: {
-      type: 'ARRAY',
+      type: 'array',
       items: {
-        type: 'OBJECT',
+        type: 'object',
         properties: {
-          company: { type: 'STRING' },
-          title: { type: 'STRING' },
-          dates: { type: 'STRING' },
-          bullets: { type: 'ARRAY', items: { type: 'STRING' } }
+          company: { type: 'string' },
+          title: { type: 'string' },
+          dates: { type: 'string' },
+          bullets: { type: 'array', items: { type: 'string' } }
         },
         required: ['company', 'title', 'dates', 'bullets']
       }
     },
     education: {
-      type: 'ARRAY',
+      type: 'array',
       items: {
-        type: 'OBJECT',
+        type: 'object',
         properties: {
-          institution: { type: 'STRING' },
-          degree: { type: 'STRING' },
-          dates: { type: 'STRING' }
+          institution: { type: 'string' },
+          degree: { type: 'string' },
+          dates: { type: 'string' }
         },
         required: ['institution', 'degree', 'dates']
       }
     },
-    matchedKeywords: { type: 'ARRAY', items: { type: 'STRING' } },
-    missingKeywords: { type: 'ARRAY', items: { type: 'STRING' } },
-    atsScore: { type: 'INTEGER' },
-    suggestedImprovements: { type: 'STRING' }
+    matchedKeywords: { type: 'array', items: { type: 'string' } },
+    missingKeywords: { type: 'array', items: { type: 'string' } },
+    atsScore: { type: 'integer' },
+    suggestedImprovements: { type: 'string' }
   },
   required: ['contactInfo', 'summary', 'skills', 'experience', 'education', 'matchedKeywords', 'missingKeywords', 'atsScore', 'suggestedImprovements']
 };
+
+function cleanGeminiResponse(text) {
+  return String(text)
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+}
 
 export async function handleOptimize(req, res) {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
@@ -49,7 +56,7 @@ export async function handleOptimize(req, res) {
   }
 
   const prompt = `You are an expert ATS resume optimizer. Tailor the source resume to the target job description. Extract only facts present in the resume; never invent employers, degrees, dates, achievements, or skills. Naturally align the summary and experience bullets to relevant job keywords without misrepresenting experience. Return matched and missing keywords, an estimated ATS score from 0 to 100, and actionable improvement advice.\n\nSOURCE RESUME:\n${resumeText}\n\nTARGET JOB DESCRIPTION:\n${jobDescription}`;
-  const model = process.env.GEMINI_MODEL || 'gemini-3-flash-preview';
+  const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   let geminiResponse;
 
@@ -72,6 +79,10 @@ export async function handleOptimize(req, res) {
     await new Promise((resolve) => setTimeout(resolve, 1000 * (2 ** attempt)));
   }
 
+  if (!geminiResponse) {
+    return res.status(502).json({ error: 'Gemini request failed before a response was received.' });
+  }
+
   const result = await geminiResponse.json().catch(() => ({}));
   if (!geminiResponse.ok) {
     const status = geminiResponse.status === 429 ? 429 : 502;
@@ -89,9 +100,10 @@ export async function handleOptimize(req, res) {
   }
 
   try {
-    const resume = JSON.parse(responseText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim());
+    const resume = JSON.parse(cleanGeminiResponse(responseText));
     return res.json(resume);
-  } catch {
+  } catch (error) {
+    console.error('Gemini JSON parse error:', error, responseText);
     return res.status(502).json({ error: 'Gemini returned an invalid response format. Please try again.' });
   }
 }
