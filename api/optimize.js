@@ -55,8 +55,26 @@ export async function handleOptimize(req, res) {
     return res.status(400).json({ error: 'Provide both a resume and a target job description.' });
   }
 
-  const prompt = `You are an expert ATS resume optimizer. Tailor the source resume to the target job description. Extract only facts present in the resume; never invent employers, degrees, dates, achievements, or skills. Naturally align the summary and experience bullets to relevant job keywords without misrepresenting experience. Return matched and missing keywords, an estimated ATS score from 0 to 100, and actionable improvement advice.\n\nSOURCE RESUME:\n${resumeText}\n\nTARGET JOB DESCRIPTION:\n${jobDescription}`;
-  const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
+  const prompt = `You are an expert ATS resume optimizer. Tailor the source resume to the target job description. Extract only facts present in the resume; never invent employers, degrees, dates, or skills. Return valid JSON matching the schema exactly.
+
+Resume:
+${resumeText}
+
+Target Job Description:
+${jobDescription}
+
+Provide a tailored resume with:
+1. Contact info formatted as "Name | Email | Phone | LinkedIn"
+2. A 3-4 sentence professional summary targeting this role
+3. Top 8-10 relevant skills
+4. Professional experience with 3-4 achievement-focused bullets per role (quantified when possible)
+5. Education with institution, degree, and dates
+6. Keywords from the job description that match the resume
+7. Keywords from the job description that are missing
+8. An ATS compatibility score (0-100) based on keyword density and formatting
+9. Specific, actionable suggestions for improvement`;
+
+  const model = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
   let geminiResponse;
 
