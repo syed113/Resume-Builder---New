@@ -1,10 +1,50 @@
-import { useState } from 'react';
-import {
-  Upload, FileText, FileSearch, Briefcase,
-  ChevronRight, CheckCircle2, AlertTriangle,
-  Printer, Edit3, Save, RefreshCw,
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  Upload, FileText, FileSearch, Briefcase, 
+  ChevronRight, CheckCircle2, AlertTriangle, 
+  Printer, Edit3, Save, RefreshCw, Plus, Trash2,
   Download, ArrowLeft, Key
 } from 'lucide-react';
+
+// --- Schema Definition for Gemini ---
+const responseSchema = {
+  type: "OBJECT",
+  properties: {
+    contactInfo: { type: "STRING", description: "Candidate name and contact info (email, phone, links) separated by |" },
+    summary: { type: "STRING", description: "A highly tailored 3-4 sentence professional summary aligning with the job description." },
+    skills: { type: "ARRAY", items: { type: "STRING" }, description: "Core competencies and skills relevant to the job." },
+    experience: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          company: { type: "STRING" },
+          title: { type: "STRING" },
+          dates: { type: "STRING" },
+          bullets: { type: "ARRAY", items: { type: "STRING" }, description: "Accomplishment-driven bullet points naturally integrating job description keywords." }
+        },
+        required: ["company", "title", "dates", "bullets"]
+      }
+    },
+    education: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          institution: { type: "STRING" },
+          degree: { type: "STRING" },
+          dates: { type: "STRING" }
+        },
+        required: ["institution", "degree", "dates"]
+      }
+    },
+    matchedKeywords: { type: "ARRAY", items: { type: "STRING" }, description: "Exact keywords from the job description found in or added to the resume." },
+    missingKeywords: { type: "ARRAY", items: { type: "STRING" }, description: "Crucial keywords from the job description missing from the candidate's experience." },
+    atsScore: { type: "INTEGER", description: "Estimated ATS match score from 0 to 100 based on keyword overlap." },
+    suggestedImprovements: { type: "STRING", description: "Actionable advice to further improve the resume for this specific role." }
+  },
+  required: ["contactInfo", "summary", "skills", "experience", "education", "matchedKeywords", "missingKeywords", "atsScore", "suggestedImprovements"]
+};
 
 export default function App() {
   const [step, setStep] = useState(1); // 1: Input, 2: Loading, 3: Results
@@ -12,10 +52,12 @@ export default function App() {
   const [jobDescription, setJobDescription] = useState('');
   const [isError, setIsError] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-
+  
+  // Structured Resume State
   const [resumeData, setResumeData] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
 
+  // File handling
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -30,6 +72,29 @@ export default function App() {
     }
   };
 
+  const fetchWithBackoff = async (url, options, maxRetries = 3) => {
+    let delay = 1000; // Start with 1 second delay
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const response = await fetch(url, options);
+        // If server is busy (429) or throws a 500+ error, trigger a retry
+        if (response.status === 429 || response.status >= 500) {
+          if (i < maxRetries - 1) {
+              await new Promise(resolve => setTimeout(resolve, delay));
+              delay *= 2; // Exponentially increase delay
+              continue;
+          }
+        }
+        return response; 
+      } catch (error) {
+        if (i === maxRetries - 1) throw error;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        delay *= 2;
+      }
+    }
+    throw new Error('Network request failed after multiple attempts. Please check your connection.');
+  };
+
   const handleOptimize = async () => {
     if (!resumeText.trim() || !jobDescription.trim()) {
       setIsError(true);
@@ -41,31 +106,75 @@ export default function App() {
     setStep(2);
 
     try {
-      const response = await fetch('/api/optimize', {
+      const apiKey = ""; // Canvas environment automatically injects the key at runtime when left empty
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+      
+      const promptText = `You are an expert ATS (Applicant Tracking System) optimizer and Executive Resume Writer.
+
+TASK:
+Analyze the SOURCE RESUME against the TARGET JOB DESCRIPTION.
+1. EXTRACT real facts: Get the actual contact info, education, and experience from the SOURCE RESUME. Do NOT invent jobs or degrees.
+2. KEYWORD ANALYSIS: Identify hard skills, soft skills, tools, and methodologies in the TARGET JOB DESCRIPTION.
+3. MATCH & TAILOR: Rewrite the 'summary' and experience 'bullets' to naturally integrate as many matching keywords from the job description as possible, without fabricating experience. Use strong action verbs.
+4. ATS SCORING: Calculate an 'atsScore' (0-100) representing how well the tailored resume now matches the job description.
+5. GAP ANALYSIS: List the 'matchedKeywords' you successfully integrated or found. List the 'missingKeywords' that the candidate lacks but the job requires.
+
+SOURCE RESUME:
+${resumeText}
+
+TARGET JOB DESCRIPTION:
+${jobDescription}`;
+
+      const payload = {
+        contents: [{ role: "user", parts: [{ text: promptText }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+          responseSchema: responseSchema // Using the schema defined at the top of the file
+        }
+      };
+
+      const response = await fetchWithBackoff(apiUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resumeText, jobDescription })
+        body: JSON.stringify(payload)
       });
 
-      const contentType = response.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        const responseText = (await response.text()).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-        const detail = responseText ? ` ${responseText.slice(0, 160)}` : '';
-        throw new Error(`The API returned a non-JSON response (HTTP ${response.status}). Check that /api/optimize is deployed.${detail}`);
-      }
       const result = await response.json();
-
+      
       if (!response.ok) {
-        throw new Error(result.error || `Request failed with status ${response.status}`);
+        throw new Error(result.error?.message || `API Request Failed with status ${response.status}`);
       }
 
-      setResumeData(result);
-      setStep(3);
+      const candidate = result.candidates?.[0];
+
+      // Handle AI Safety Blocks (e.g. if the resume contains sensitive PII)
+      if (candidate?.finishReason === 'SAFETY') {
+        throw new Error('The AI blocked the request due to safety filters. Please remove highly sensitive information (like full home addresses) and try again.');
+      }
+
+      if (candidate?.content?.parts?.[0]?.text) {
+        let jsonText = candidate.content.parts[0].text;
+        
+        // Clean up markdown wrappers in case the AI included them despite responseMimeType
+        jsonText = jsonText.replace(/^\`\`\`(?:json)?\s*/i, '').replace(/\s*\`\`\`$/i, '').trim();
+        
+        try {
+          const parsedData = JSON.parse(jsonText);
+          setResumeData(parsedData);
+          setStep(3);
+        } catch (parseError) {
+          console.error("JSON Parsing Error:", parseError, jsonText);
+          throw new Error('The AI returned an invalid data format. Please try running the optimization again.');
+        }
+      } else {
+         throw new Error('The AI returned an empty response. Please try again.');
+      }
+
     } catch (err) {
-      console.error('Optimization Process Error:', err);
+      console.error("Optimization Process Error:", err);
       setIsError(true);
       setErrorMessage(err.message || 'An unexpected error occurred. Please try again.');
-      setStep(1);
+      setStep(1); // Return to input step so user can see error
     }
   };
 
@@ -78,14 +187,14 @@ export default function App() {
     let md = `# ${resumeData.contactInfo}\n\n`;
     md += `## Professional Summary\n${resumeData.summary}\n\n`;
     md += `## Core Competencies\n${resumeData.skills.join(' | ')}\n\n`;
-    md += '## Professional Experience\n';
-    resumeData.experience.forEach((exp) => {
+    md += `## Professional Experience\n`;
+    resumeData.experience.forEach(exp => {
       md += `### ${exp.title} - ${exp.company}\n*${exp.dates}*\n`;
-      exp.bullets.forEach((b) => { md += `- ${b}\n`; });
-      md += '\n';
+      exp.bullets.forEach(b => md += `- ${b}\n`);
+      md += `\n`;
     });
-    md += '## Education\n';
-    resumeData.education.forEach((edu) => {
+    md += `## Education\n`;
+    resumeData.education.forEach(edu => {
       md += `- **${edu.degree}** - ${edu.institution} (${edu.dates})\n`;
     });
 
@@ -98,6 +207,7 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
+  // UI Components
   const renderInputStep = () => (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in zoom-in-95 duration-500">
       <div className="text-center space-y-4">
@@ -146,7 +256,7 @@ export default function App() {
             value={jobDescription}
             onChange={(e) => setJobDescription(e.target.value)}
             placeholder="Paste the job requirements and responsibilities here..."
-            className="w-full h-[400px] p-4 border border-slate-200 rounded-xl shadow-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none font-mono text-sm"
+            className="w-full h-[400px] p-4 border border-slate-200 rounded-xl shadow-sm focus:ring-2 focus:purple-500 focus:border-purple-500 resize-none font-mono text-sm"
           />
         </div>
       </div>
@@ -160,10 +270,6 @@ export default function App() {
           <ChevronRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
         </button>
       </div>
-      <p className="flex items-center justify-center gap-2 text-xs text-slate-500">
-        <Key className="w-3.5 h-3.5" />
-        Gemini API key is stored securely on the server as <code>GEMINI_API_KEY</code> and read from the local <code>.env.local</code> file during development.
-      </p>
     </div>
   );
 
@@ -185,8 +291,10 @@ export default function App() {
 
     return (
       <div className="h-[calc(100vh-8rem)] flex flex-col lg:flex-row gap-6 print:block print:h-auto print:gap-0">
+        
+        {/* Left Panel: Gap Analysis (Hidden on Print) */}
         <div className="w-full lg:w-1/3 flex flex-col gap-4 print:hidden overflow-y-auto pr-2 pb-8">
-          <button
+          <button 
             onClick={() => setStep(1)}
             className="flex items-center text-sm font-medium text-slate-500 hover:text-slate-900 mb-2 transition-colors"
           >
@@ -199,6 +307,8 @@ export default function App() {
               <h3 className="font-semibold text-slate-900">ATS Gap Analysis</h3>
             </div>
             <div className="p-4 space-y-6">
+              
+              {/* ATS Score Section */}
               <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-lg p-4 shadow-sm">
                 <div>
                   <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Estimated ATS Match</h4>
@@ -247,6 +357,7 @@ export default function App() {
                   {resumeData.suggestedImprovements}
                 </p>
               </div>
+
             </div>
           </div>
 
@@ -263,10 +374,13 @@ export default function App() {
           </div>
         </div>
 
+        {/* Right Panel: The Resume Document */}
         <div className="w-full lg:w-2/3 bg-white rounded-xl border border-slate-200 shadow-xl overflow-y-auto print:border-none print:shadow-none print:w-full print:overflow-visible">
+          
+          {/* Editor Toolbar (Hidden on Print) */}
           <div className="sticky top-0 bg-white/80 backdrop-blur-md border-b border-slate-200 px-6 py-3 flex items-center justify-between z-10 print:hidden">
             <h2 className="font-semibold text-slate-900">Document Preview</h2>
-            <button
+            <button 
               onClick={() => setIsEditing(!isEditing)}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isEditing ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
             >
@@ -274,17 +388,20 @@ export default function App() {
             </button>
           </div>
 
+          {/* Resume Content Paper */}
           <div className="p-8 sm:p-12 max-w-[850px] mx-auto print:p-0">
             {isEditing ? renderEditableResume() : renderStaticResume()}
           </div>
         </div>
+
       </div>
     );
   };
 
   const renderEditableResume = () => {
+    // Helper to update deeply nested state
     const updateData = (field, value) => {
-      setResumeData((prev) => ({ ...prev, [field]: value }));
+      setResumeData(prev => ({ ...prev, [field]: value }));
     };
 
     const updateExperience = (index, field, value) => {
@@ -301,51 +418,55 @@ export default function App() {
 
     return (
       <div className="space-y-8">
+        {/* Contact Info */}
         <div>
           <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Contact Information</label>
-          <input
+          <input 
             className="w-full text-center text-xl font-bold border-b-2 border-slate-200 focus:border-blue-500 outline-none pb-1"
             value={resumeData.contactInfo}
             onChange={(e) => updateData('contactInfo', e.target.value)}
           />
         </div>
 
+        {/* Summary */}
         <div>
           <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Professional Summary</label>
-          <textarea
+          <textarea 
             className="w-full text-sm leading-relaxed border-2 border-slate-200 rounded-md p-2 focus:border-blue-500 outline-none resize-y min-h-[100px]"
             value={resumeData.summary}
             onChange={(e) => updateData('summary', e.target.value)}
           />
         </div>
 
+        {/* Skills */}
         <div>
           <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Core Competencies (Comma Separated)</label>
-          <textarea
+          <textarea 
             className="w-full text-sm leading-relaxed border-2 border-slate-200 rounded-md p-2 focus:border-blue-500 outline-none"
             value={resumeData.skills.join(', ')}
-            onChange={(e) => updateData('skills', e.target.value.split(',').map((s) => s.trim()))}
+            onChange={(e) => updateData('skills', e.target.value.split(',').map(s => s.trim()))}
           />
         </div>
 
+        {/* Experience */}
         <div>
           <label className="text-xs font-bold text-slate-500 uppercase mb-3 block">Professional Experience</label>
           <div className="space-y-6">
             {resumeData.experience.map((exp, i) => (
               <div key={i} className="p-4 border-2 border-slate-100 rounded-lg space-y-3 bg-slate-50/50">
                 <div className="grid grid-cols-2 gap-4">
-                  <input className="font-bold border-b border-slate-300 bg-transparent outline-none" value={exp.title} onChange={(e) => updateExperience(i, 'title', e.target.value)} placeholder="Job Title" />
-                  <input className="font-bold border-b border-slate-300 bg-transparent outline-none text-right" value={exp.company} onChange={(e) => updateExperience(i, 'company', e.target.value)} placeholder="Company" />
-                  <input className="text-sm italic border-b border-slate-300 bg-transparent outline-none" value={exp.dates} onChange={(e) => updateExperience(i, 'dates', e.target.value)} placeholder="Dates" />
+                  <input className="font-bold border-b border-slate-300 bg-transparent outline-none" value={exp.title} onChange={e => updateExperience(i, 'title', e.target.value)} placeholder="Job Title" />
+                  <input className="font-bold border-b border-slate-300 bg-transparent outline-none text-right" value={exp.company} onChange={e => updateExperience(i, 'company', e.target.value)} placeholder="Company" />
+                  <input className="text-sm italic border-b border-slate-300 bg-transparent outline-none" value={exp.dates} onChange={e => updateExperience(i, 'dates', e.target.value)} placeholder="Dates" />
                 </div>
                 <div className="space-y-2 mt-2">
                   {exp.bullets.map((bullet, j) => (
                     <div key={j} className="flex gap-2 items-start">
                       <span className="mt-1 text-slate-400">•</span>
-                      <textarea
-                        className="w-full text-sm border border-slate-200 rounded p-1 outline-none resize-none min-h-[40px]"
-                        value={bullet}
-                        onChange={(e) => updateBullet(i, j, e.target.value)}
+                      <textarea 
+                        className="w-full text-sm border border-slate-200 rounded p-1 outline-none resize-none min-h-[40px]" 
+                        value={bullet} 
+                        onChange={e => updateBullet(i, j, e.target.value)} 
                       />
                     </div>
                   ))}
@@ -361,6 +482,8 @@ export default function App() {
   const renderStaticResume = () => {
     return (
       <div className="text-slate-900 font-sans space-y-6">
+        
+        {/* Header */}
         <div className="text-center border-b-2 border-slate-900 pb-4">
           <h1 className="text-3xl font-bold tracking-tight mb-2 whitespace-pre-wrap">{resumeData.contactInfo.split('|')[0] || resumeData.contactInfo}</h1>
           {resumeData.contactInfo.includes('|') && (
@@ -368,11 +491,13 @@ export default function App() {
           )}
         </div>
 
+        {/* Summary */}
         <div className="space-y-2">
           <h2 className="text-lg font-bold uppercase tracking-widest text-slate-800 border-b border-slate-300 pb-1">Professional Summary</h2>
           <p className="text-sm leading-relaxed text-slate-700">{resumeData.summary}</p>
         </div>
 
+        {/* Skills */}
         <div className="space-y-2">
           <h2 className="text-lg font-bold uppercase tracking-widest text-slate-800 border-b border-slate-300 pb-1">Core Competencies</h2>
           <p className="text-sm leading-relaxed text-slate-700 font-medium">
@@ -380,9 +505,10 @@ export default function App() {
           </p>
         </div>
 
+        {/* Experience */}
         <div className="space-y-4">
           <h2 className="text-lg font-bold uppercase tracking-widest text-slate-800 border-b border-slate-300 pb-1">Professional Experience</h2>
-
+          
           {resumeData.experience.map((exp, i) => (
             <div key={i} className="space-y-1.5 break-inside-avoid">
               <div className="flex justify-between items-baseline">
@@ -399,6 +525,7 @@ export default function App() {
           ))}
         </div>
 
+        {/* Education */}
         <div className="space-y-3 break-inside-avoid">
           <h2 className="text-lg font-bold uppercase tracking-widest text-slate-800 border-b border-slate-300 pb-1">Education</h2>
           {resumeData.education.map((edu, i) => (
@@ -412,12 +539,15 @@ export default function App() {
             </div>
           ))}
         </div>
+
       </div>
     );
   };
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans print:bg-white text-slate-900 selection:bg-blue-100 selection:text-blue-900">
+      
+      {/* Navbar (Hidden on Print) */}
       <nav className="bg-white border-b border-slate-200 sticky top-0 z-50 print:hidden">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
@@ -436,8 +566,9 @@ export default function App() {
         {step === 2 && renderLoadingStep()}
         {step === 3 && renderResultStep()}
       </main>
-
-      <style dangerouslySetInnerHTML={{ __html: `
+      
+      {/* CSS for printing to ensure only the resume is printed nicely */}
+      <style dangerouslySetInnerHTML={{__html: `
         @media print {
           body * {
             visibility: hidden;
@@ -453,7 +584,7 @@ export default function App() {
           }
           @page { margin: 0.75in; }
         }
-      ` }} />
+      `}} />
     </div>
   );
 }
